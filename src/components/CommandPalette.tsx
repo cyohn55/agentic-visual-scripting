@@ -162,6 +162,18 @@ const CommandPalette: React.FC<CommandPaletteProps> = ({
       category: 'Flow',
       keywords: ['create', 'process', 'action', 'flow', 'control']
     },
+    {
+      id: 'create-code-block',
+      label: 'Create Code Block',
+      icon: '💻',
+      action: () => {
+        const actions = (window as any).canvasActions;
+        if (actions) actions.createNode('code');
+        onClose();
+      },
+      category: 'Create',
+      keywords: ['create', 'code', 'editor', 'programming', 'script', 'javascript', 'python']
+    },
     
     // Node editing commands
     ...(selectedNode ? [

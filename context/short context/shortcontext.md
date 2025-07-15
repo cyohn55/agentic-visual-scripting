@@ -5,7 +5,7 @@ This file stores temporary contextual data, quick edits, and temporary instructi
 **Note**: This file's content is cleared when the user prompts to review the project directory.
 
 ## Current Temporary Instructions
-(Content will be added here when user provides short() tagged instructions)
+(Content cleared during project review)
 
 ## Quick Tasks/Edits
-(Temporary requests and quick modifications will be tracked here) 
+(Content cleared during project review) 

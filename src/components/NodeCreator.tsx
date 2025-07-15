@@ -145,6 +145,60 @@ const NodeCreator: React.FC<NodeCreatorProps> = ({ isOpen, onClose, onCreateNode
       description: 'Input field component',
       category: 'ui',
     },
+
+    // Code Blocks
+    {
+      id: 'javascript-code',
+      name: 'JavaScript Code',
+      type: 'code',
+      defaultData: { 
+        label: 'JavaScript',
+        code: 'console.log("Hello, World!");',
+        language: 'javascript'
+      },
+      icon: '🟨',
+      description: 'JavaScript code block with Monaco Editor',
+      category: 'code',
+    },
+    {
+      id: 'python-code',
+      name: 'Python Code',
+      type: 'code',
+      defaultData: { 
+        label: 'Python Script',
+        code: 'print("Hello, World!")',
+        language: 'python'
+      },
+      icon: '🐍',
+      description: 'Python code block with syntax highlighting',
+      category: 'code',
+    },
+    {
+      id: 'typescript-code',
+      name: 'TypeScript Code',
+      type: 'code',
+      defaultData: { 
+        label: 'TypeScript',
+        code: 'const message: string = "Hello, World!";\nconsole.log(message);',
+        language: 'typescript'
+      },
+      icon: '🔷',
+      description: 'TypeScript code with type checking',
+      category: 'code',
+    },
+    {
+      id: 'sql-query',
+      name: 'SQL Query',
+      type: 'code',
+      defaultData: { 
+        label: 'SQL Query',
+        code: 'SELECT * FROM users WHERE active = 1;',
+        language: 'sql'
+      },
+      icon: '🗄️',
+      description: 'SQL query with syntax highlighting',
+      category: 'code',
+    },
     {
       id: 'ui-modal',
       name: 'Modal Dialog',

@@ -1,6 +1,6 @@
 export type ViewMode = 'mindmap' | 'filesystem' | 'execution' | 'dataflow';
 
-export type NodeType = 'sticky-note' | 'text-file' | 'shape' | 'control-flow';
+export type NodeType = 'sticky-note' | 'text-file' | 'shape' | 'control-flow' | 'code';
 
 export type ConnectionType = 'association' | 'parent-child' | 'execution' | 'data-flow';
 

@@ -1,5 +1,6 @@
 import { Node, Edge } from 'reactflow';
 import { ViewMode } from '../types';
+import { layoutEngine } from '../utils/layoutAlgorithms';
 
 export interface CanvasState {
   nodes: Node[];
@@ -47,9 +48,31 @@ class CanvasStore {
   }
 
   setState(newState: Partial<CanvasState>) {
+    const previousViewMode = this.state.viewMode;
     this.state = { ...this.state, ...newState };
+    
+    // Apply layout if view mode changed
+    if (newState.viewMode && newState.viewMode !== previousViewMode) {
+      this.applyViewModeLayout(newState.viewMode);
+    }
+    
     this.notifyListeners();
     this.saveToLocalStorage();
+  }
+
+  // Apply layout based on view mode
+  applyViewModeLayout(viewMode: ViewMode) {
+    if (this.state.nodes.length === 0) return;
+    
+    const layoutResult = layoutEngine.applyLayout(
+      this.state.nodes,
+      this.state.edges,
+      viewMode
+    );
+    
+    // Update nodes with new positions
+    this.state.nodes = layoutResult.nodes;
+    this.state.edges = layoutResult.edges;
   }
 
   subscribe(listener: () => void) {

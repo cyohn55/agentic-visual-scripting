@@ -20,16 +20,20 @@ import StickyNoteNode from './nodes/StickyNoteNode';
 import TextFileNode from './nodes/TextFileNode';
 import ShapeNode from './nodes/ShapeNode';
 import ControlFlowNode from './nodes/ControlFlowNode';
+import CodeNode from './nodes/CodeNode';
 import PropertiesPanel from './PropertiesPanel';
 import MultiSelectOverlay from './MultiSelectOverlay';
 import GroupingPanel from './GroupingPanel';
+import ConnectionTypeModal from './ConnectionTypeModal';
 import { canvasStore } from '../store/canvasStore';
+import { ConnectionType } from '../types';
 
 const nodeTypes: NodeTypes = {
   'sticky-note': StickyNoteNode,
   'text-file': TextFileNode,
   'shape': ShapeNode,
   'control-flow': ControlFlowNode,
+  'code': CodeNode,
 };
 
 interface CanvasProps {
@@ -61,6 +65,12 @@ const Canvas: React.FC<CanvasProps> = ({
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(false);
   const [showMultiSelectOverlay, setShowMultiSelectOverlay] = useState(false);
   const [showGroupingPanel, setShowGroupingPanel] = useState(false);
+  const [showConnectionModal, setShowConnectionModal] = useState(false);
+  const [pendingConnection, setPendingConnection] = useState<{
+    sourceNode: Node;
+    targetNode: Node;
+    params: Connection;
+  } | null>(null);
   const canvasRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<Node[]>([]);
 
@@ -68,6 +78,37 @@ const Canvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     nodesRef.current = nodes;
   }, [nodes]);
+
+  // Handle node data updates from custom events (e.g., from CodeNode)
+  useEffect(() => {
+    const handleUpdateNodeData = (event: any) => {
+      const { nodeId, data } = event.detail;
+      
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+        )
+      );
+      
+      // Update canvas store
+      const updatedNodes = nodes.map((node) =>
+        node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
+      );
+      
+      canvasStore.executeCommand({
+        type: 'UPDATE_NODE',
+        payload: { nodeId, data },
+        timestamp: Date.now(),
+      });
+      
+      canvasStore.saveToLocalStorage();
+    };
+
+    window.addEventListener('updateNodeData', handleUpdateNodeData);
+    return () => {
+      window.removeEventListener('updateNodeData', handleUpdateNodeData);
+    };
+  }, [setNodes]);
 
   // Use external state if provided, otherwise use internal state
   const currentSelectedNode = externalSelectedNode !== undefined ? externalSelectedNode : selectedNode;
@@ -121,9 +162,32 @@ const Canvas: React.FC<CanvasProps> = ({
     });
   }, [onNodesChange]);
 
-  // Handle edge connections
+  // Handle edge connections - show modal to define connection type
   const onConnect = useCallback((params: Connection) => {
-    // Create new edge with enhanced styling
+    if (!params.source || !params.target) return;
+    
+    // Find source and target nodes
+    const sourceNode = nodesRef.current.find(n => n.id === params.source);
+    const targetNode = nodesRef.current.find(n => n.id === params.target);
+    
+    if (!sourceNode || !targetNode) return;
+    
+    // Store pending connection and show modal
+    setPendingConnection({
+      sourceNode,
+      targetNode,
+      params,
+    });
+    setShowConnectionModal(true);
+  }, []);
+
+  // Create connection with specified type
+  const handleConnectionConfirm = useCallback((connectionType: ConnectionType, customLabel?: string) => {
+    if (!pendingConnection) return;
+    
+    const { params } = pendingConnection;
+    
+    // Create new edge with connection metadata
     const newEdge: Edge = {
       id: `edge-${params.source}-${params.target}`,
       source: params.source!,
@@ -137,6 +201,10 @@ const Canvas: React.FC<CanvasProps> = ({
       markerEnd: {
         type: MarkerType.ArrowClosed,
         color: '#8b5cf6',
+      },
+      data: {
+        connectionType,
+        label: customLabel,
       },
     };
 
@@ -152,7 +220,17 @@ const Canvas: React.FC<CanvasProps> = ({
 
     // Save to localStorage
     canvasStore.saveToLocalStorage();
-  }, [setEdges]);
+    
+    // Close modal and clear pending connection
+    setShowConnectionModal(false);
+    setPendingConnection(null);
+  }, [pendingConnection, setEdges]);
+
+  // Cancel connection creation
+  const handleConnectionCancel = useCallback(() => {
+    setShowConnectionModal(false);
+    setPendingConnection(null);
+  }, []);
 
   // Handle edge deletions
   const handleEdgesChange = useCallback((changes: any[]) => {
@@ -266,6 +344,18 @@ const Canvas: React.FC<CanvasProps> = ({
           data: { 
             label: 'Process',
             type: 'process'
+          },
+        };
+        break;
+      case 'code':
+        nodeData = {
+          id,
+          type: 'code',
+          position: nodePosition,
+          data: { 
+            label: 'Code Block',
+            code: '',
+            language: 'javascript'
           },
         };
         break;
@@ -613,6 +703,14 @@ const Canvas: React.FC<CanvasProps> = ({
             <span className="text-lg">⚙️</span>
             <span className="text-white">Control Flow Node</span>
           </button>
+          <hr className="border-gray-600 my-1" />
+          <button
+            onClick={() => handleContextMenuAction('code')}
+            className="w-full px-4 py-2 text-left hover:bg-gray-700 flex items-center space-x-3"
+          >
+            <span className="text-lg">💻</span>
+            <span className="text-white">Code Block</span>
+          </button>
         </div>
       )}
 
@@ -663,6 +761,23 @@ const Canvas: React.FC<CanvasProps> = ({
           </button>
         </div>
       )}
+
+      {/* Connection Type Modal */}
+      <ConnectionTypeModal
+        isOpen={showConnectionModal}
+        sourceNode={pendingConnection?.sourceNode ? {
+          id: pendingConnection.sourceNode.id,
+          type: pendingConnection.sourceNode.type || 'unknown',
+          label: pendingConnection.sourceNode.data?.label
+        } : undefined}
+        targetNode={pendingConnection?.targetNode ? {
+          id: pendingConnection.targetNode.id,
+          type: pendingConnection.targetNode.type || 'unknown',
+          label: pendingConnection.targetNode.data?.label
+        } : undefined}
+        onConfirm={handleConnectionConfirm}
+        onCancel={handleConnectionCancel}
+      />
     </div>
   );
 };
