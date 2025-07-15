@@ -1,223 +1,149 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Handle, Position, useReactFlow } from 'reactflow';
+import React, { useState, useRef } from 'react';
+import { Handle, Position, NodeProps, useReactFlow, NodeResizer } from 'reactflow';
 
-interface StickyNoteNodeProps {
-  data: {
-    label: string;
-    content?: string;
-    color?: string;
-    width?: number;
-    height?: number;
-  };
-  selected: boolean;
-  id: string;
+interface StickyNoteData {
+  label: string;
+  content: string;
+  color: string;
+  width?: number;
+  height?: number;
 }
 
-const StickyNoteNode: React.FC<StickyNoteNodeProps> = ({ data, selected, id }) => {
-  const [isEditingTitle, setIsEditingTitle] = useState(false);
-  const [isEditingContent, setIsEditingContent] = useState(false);
-  const [title, setTitle] = useState(data.label);
-  const [content, setContent] = useState(data.content || '');
-  const [isResizing, setIsResizing] = useState(false);
-  
-  const titleRef = useRef<HTMLInputElement>(null);
-  const contentRef = useRef<HTMLTextAreaElement>(null);
+// Memoized StickyNoteNode for better performance
+const StickyNoteNode: React.FC<NodeProps<StickyNoteData>> = React.memo(({
+  data,
+  id,
+  selected,
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState(data.content || '');
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { setNodes } = useReactFlow();
 
-  const width = data.width || 200;
-  const height = data.height || 120;
-  const bgColor = data.color || '#fef3c7';
-  const borderColor = data.color || '#f59e0b';
+  // Let React Flow control the dimensions completely
 
-  // Update node data when title or content changes
-  const updateNodeData = useCallback((updates: Partial<typeof data>) => {
-    setNodes((nds) =>
-      nds.map((node) =>
-        node.id === id
-          ? { ...node, data: { ...node.data, ...updates } }
-          : node
-      )
-    );
-  }, [id, setNodes]);
-
-  // Handle title editing
-  const handleTitleDoubleClick = () => {
-    setIsEditingTitle(true);
-  };
-
-  const handleTitleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') {
-      setIsEditingTitle(false);
-      updateNodeData({ label: title });
-    }
-    if (e.key === 'Escape') {
-      setTitle(data.label);
-      setIsEditingTitle(false);
+  // Optimized update function using global reference
+  const updateNodeData = (updates: Partial<StickyNoteData>) => {
+    if ((window as any).__updateNodeData) {
+      (window as any).__updateNodeData(id, updates);
+    } else {
+      // Fallback to direct React Flow update
+      setNodes((nodes) =>
+        nodes.map((node) =>
+          node.id === id ? { ...node, data: { ...node.data, ...updates } } : node
+        )
+      );
     }
   };
 
-  const handleTitleBlur = () => {
-    setIsEditingTitle(false);
-    updateNodeData({ label: title });
+  const handleDoubleClick = () => {
+    setIsEditing(true);
+    setEditValue(data.content || '');
+    setTimeout(() => {
+      textareaRef.current?.focus();
+    }, 0);
   };
 
-  // Handle content editing
-  const handleContentDoubleClick = () => {
-    setIsEditingContent(true);
+  const handleSave = () => {
+    updateNodeData({ content: editValue });
+    setIsEditing(false);
   };
 
-  const handleContentKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setContent(data.content || '');
-      setIsEditingContent(false);
-    }
-    // Allow Ctrl+Enter to save
+  const handleCancel = () => {
+    setEditValue(data.content || '');
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && e.ctrlKey) {
-      setIsEditingContent(false);
-      updateNodeData({ content });
+      handleSave();
+    } else if (e.key === 'Escape') {
+      handleCancel();
     }
   };
 
-  const handleContentBlur = () => {
-    setIsEditingContent(false);
-    updateNodeData({ content });
+  const colorClasses = {
+    yellow: 'bg-yellow-200 border-yellow-400',
+    blue: 'bg-blue-200 border-blue-400',
+    green: 'bg-green-200 border-green-400',
+    pink: 'bg-pink-200 border-pink-400',
+    purple: 'bg-purple-200 border-purple-400',
+    orange: 'bg-orange-200 border-orange-400',
   };
 
-  // Auto-focus when editing starts
-  useEffect(() => {
-    if (isEditingTitle && titleRef.current) {
-      titleRef.current.focus();
-      titleRef.current.select();
-    }
-  }, [isEditingTitle]);
-
-  useEffect(() => {
-    if (isEditingContent && contentRef.current) {
-      contentRef.current.focus();
-    }
-  }, [isEditingContent]);
+  const colorClass = colorClasses[data.color as keyof typeof colorClasses] || colorClasses.yellow;
 
   return (
-    <div
-      className={`rounded-lg shadow-lg border-2 relative ${
-        selected ? 'ring-2 ring-blue-500' : ''
-      } ${isResizing ? 'cursor-nw-resize' : 'cursor-default'}`}
-      style={{
-        backgroundColor: bgColor,
-        borderColor: borderColor,
-        width: width,
-        height: height,
-        minWidth: 150,
-        minHeight: 80,
-      }}
+    <div 
+      className={`${colorClass} rounded-lg shadow-lg border-2 relative cursor-pointer transition-shadow hover:shadow-xl flex flex-col w-full h-full`}
+      style={{ minWidth: 150, minHeight: 100 }}
+      onDoubleClick={handleDoubleClick}
     >
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="w-3 h-3 border-2"
-        style={{ backgroundColor: borderColor, borderColor: borderColor }}
+      {/* React Flow's built-in NodeResizer */}
+      <NodeResizer 
+        color="#3b82f6"
+        isVisible={selected}
+        minWidth={150}
+        minHeight={100}
+        handleStyle={{
+          backgroundColor: '#3b82f6',
+          border: '2px solid #1d4ed8',
+          borderRadius: '3px',
+          width: '8px',
+          height: '8px',
+        }}
       />
-      
-      <div className="p-3 h-full flex flex-col">
-        {/* Title */}
-        <div className="mb-2">
-          {isEditingTitle ? (
-            <input
-              ref={titleRef}
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              onKeyDown={handleTitleKeyDown}
-              onBlur={handleTitleBlur}
-              className="w-full bg-transparent border-none outline-none font-semibold text-sm text-gray-800 p-0"
-              style={{ background: 'transparent' }}
-            />
-          ) : (
-            <div
-              className="font-semibold text-sm text-gray-800 cursor-text hover:bg-black hover:bg-opacity-10 rounded px-1 py-0.5"
-              onDoubleClick={handleTitleDoubleClick}
-              title="Double-click to edit"
-            >
-              {title}
-            </div>
-          )}
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-hidden">
-          {isEditingContent ? (
-            <textarea
-              ref={contentRef}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              onKeyDown={handleContentKeyDown}
-              onBlur={handleContentBlur}
-              className="w-full h-full bg-transparent border-none outline-none text-xs text-gray-700 resize-none p-0"
-              style={{ background: 'transparent' }}
-              placeholder="Enter your note content... (Ctrl+Enter to save)"
-            />
-          ) : (
-            <div
-              className="text-xs text-gray-700 cursor-text hover:bg-black hover:bg-opacity-10 rounded px-1 py-0.5 h-full overflow-y-auto"
-              onDoubleClick={handleContentDoubleClick}
-              title="Double-click to edit"
-            >
-              {content || 'Click to add content...'}
-            </div>
-          )}
-        </div>
+      {/* Header */}
+      <div className="p-2 border-b border-gray-300 flex-shrink-0">
+        <h3 className="text-sm font-semibold text-gray-800 truncate">
+          {data.label}
+        </h3>
       </div>
 
-      {/* Resize Handle */}
-      {selected && (
-        <div
-          className="absolute bottom-0 right-0 w-3 h-3 bg-gray-600 cursor-nw-resize nodrag z-10"
-          style={{ transform: 'rotate(45deg)', transformOrigin: 'center' }}
-          onMouseDown={(e) => {
-            e.stopPropagation();
-            e.preventDefault();
-            setIsResizing(true);
-            
-            // Dispatch resize start event
-            window.dispatchEvent(new CustomEvent('nodeResizeStart'));
-            
-            const startX = e.clientX;
-            const startY = e.clientY;
-            const startWidth = width;
-            const startHeight = height;
+      {/* Content - flexible height */}
+      <div className="p-3 flex-1 overflow-hidden">
+        {isEditing ? (
+          <div className="h-full flex flex-col">
+            <textarea
+              ref={textareaRef}
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onKeyDown={handleKeyDown}
+              className="flex-1 w-full bg-transparent border-none outline-none resize-none text-gray-800 text-sm"
+              placeholder="Enter your note..."
+            />
+            <div className="flex justify-end space-x-2 mt-2 flex-shrink-0">
+              <button
+                onClick={handleCancel}
+                className="px-2 py-1 text-xs bg-gray-300 text-gray-700 rounded hover:bg-gray-400"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSave}
+                className="px-2 py-1 text-xs bg-blue-500 text-white rounded hover:bg-blue-600"
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="h-full overflow-auto">
+            <pre className="text-sm text-gray-800 whitespace-pre-wrap break-words">
+              {data.content || 'Double-click to edit...'}
+            </pre>
+          </div>
+        )}
+      </div>
 
-            const handleMouseMove = (moveEvent: MouseEvent) => {
-              const newWidth = Math.max(150, startWidth + (moveEvent.clientX - startX));
-              const newHeight = Math.max(80, startHeight + (moveEvent.clientY - startY));
-              
-              // Use requestAnimationFrame for smooth updates
-              requestAnimationFrame(() => {
-                updateNodeData({ width: newWidth, height: newHeight });
-              });
-            };
-
-            const handleMouseUp = () => {
-              setIsResizing(false);
-              // Dispatch resize end event
-              window.dispatchEvent(new CustomEvent('nodeResizeEnd'));
-              document.removeEventListener('mousemove', handleMouseMove);
-              document.removeEventListener('mouseup', handleMouseUp);
-            };
-
-            document.addEventListener('mousemove', handleMouseMove);
-            document.addEventListener('mouseup', handleMouseUp);
-          }}
-        />
-      )}
-
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="w-3 h-3 border-2"
-        style={{ backgroundColor: borderColor, borderColor: borderColor }}
-      />
+      {/* Connection handles */}
+      <Handle type="target" position={Position.Top} />
+      <Handle type="source" position={Position.Bottom} />
     </div>
   );
-};
+});
+
+StickyNoteNode.displayName = 'StickyNoteNode';
 
 export default StickyNoteNode; 

@@ -25,9 +25,9 @@ import PropertiesPanel from './PropertiesPanel';
 import MultiSelectOverlay from './MultiSelectOverlay';
 import GroupingPanel from './GroupingPanel';
 import ConnectionTypeModal from './ConnectionTypeModal';
-import { canvasStore } from '../store/canvasStore';
 import { ConnectionType } from '../types';
 
+// Memoized node types to prevent recreation on every render
 const nodeTypes: NodeTypes = {
   'sticky-note': StickyNoteNode,
   'text-file': TextFileNode,
@@ -47,7 +47,8 @@ interface CanvasProps {
   onClosePropertiesPanel?: () => void;
 }
 
-const Canvas: React.FC<CanvasProps> = ({ 
+// Memoized Canvas component to prevent unnecessary re-renders
+const Canvas: React.FC<CanvasProps> = React.memo(({ 
   onCreateNode, 
   onDeleteNode, 
   onClearCanvas,
@@ -57,14 +58,16 @@ const Canvas: React.FC<CanvasProps> = ({
   showPropertiesPanel: externalShowPropertiesPanel,
   onClosePropertiesPanel
 }) => {
+  // PRIMARY STATE: Only React Flow's state management (no competing stores)
   const [nodes, setNodes, onNodesChange] = useNodesState([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  
+  // UI state only (not duplicated in external stores)
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
   const [selectedNode, setSelectedNode] = useState<Node | null>(null);
-  const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
+  const [selectedNodes] = useState<Node[]>([]);
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(false);
   const [showMultiSelectOverlay, setShowMultiSelectOverlay] = useState(false);
-  const [isAnyNodeResizing, setIsAnyNodeResizing] = useState(false);
   const [showGroupingPanel, setShowGroupingPanel] = useState(false);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [pendingConnection, setPendingConnection] = useState<{
@@ -72,116 +75,49 @@ const Canvas: React.FC<CanvasProps> = ({
     targetNode: Node;
     params: Connection;
   } | null>(null);
+  
   const canvasRef = useRef<HTMLDivElement>(null);
-  const nodesRef = useRef<Node[]>([]);
-
-  // Update nodes ref whenever nodes change
-  useEffect(() => {
-    nodesRef.current = nodes;
-  }, [nodes]);
-
-  // Handle node data updates from custom events (e.g., from CodeNode)
-  useEffect(() => {
-    const handleUpdateNodeData = (event: any) => {
-      const { nodeId, data } = event.detail;
-      
-      setNodes((nodes) =>
-        nodes.map((node) =>
-          node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
-        )
-      );
-      
-      // Skip store operations for resize updates to maintain performance
-      // Resize data is handled by React Flow's built-in state management
-      if (!data.width && !data.height) {
-        canvasStore.executeCommand({
-          type: 'UPDATE_NODE',
-          payload: { nodeId, data },
-          timestamp: Date.now(),
-        });
-        
-        canvasStore.saveToLocalStorage();
-      }
-    };
-
-    window.addEventListener('updateNodeData', handleUpdateNodeData);
-    return () => {
-      window.removeEventListener('updateNodeData', handleUpdateNodeData);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [setNodes]);
-
-  // Listen for node resize events
-  useEffect(() => {
-    const handleResizeStart = () => setIsAnyNodeResizing(true);
-    const handleResizeEnd = () => setIsAnyNodeResizing(false);
-
-    window.addEventListener('nodeResizeStart', handleResizeStart);
-    window.addEventListener('nodeResizeEnd', handleResizeEnd);
-
-    return () => {
-      window.removeEventListener('nodeResizeStart', handleResizeStart);
-      window.removeEventListener('nodeResizeEnd', handleResizeEnd);
-    };
-  }, []);
 
   // Use external state if provided, otherwise use internal state
   const currentSelectedNode = externalSelectedNode !== undefined ? externalSelectedNode : selectedNode;
   const currentShowPropertiesPanel = externalShowPropertiesPanel !== undefined ? externalShowPropertiesPanel : showPropertiesPanel;
 
-  // Track dragging with refs to avoid re-renders
-  const isDraggingRef = useRef(false);
-  const dragTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-
-  // React Flow instance for viewport control
-  // Note: fitView and getViewport removed as they were unused
-
-  // Simple onNodesChange handler that doesn't interfere with dragging
+  // Optimized node change handler (no competing updates)
   const handleNodesChange = useCallback((changes: any[]) => {
-    // Apply changes to React Flow state immediately
     onNodesChange(changes);
-    
-    // Handle position changes with minimal interference
-    changes.forEach((change) => {
-      if (change.type === 'position') {
-        if (change.dragging === true) {
-          // Mark as dragging but don't trigger re-renders
-          isDraggingRef.current = true;
-          
-          // Clear any pending timeout
-          if (dragTimeoutRef.current) {
-            clearTimeout(dragTimeoutRef.current);
-            dragTimeoutRef.current = null;
-          }
-        } else if (change.dragging === false && change.position) {
-          // Dragging finished - update store after a delay
-          isDraggingRef.current = false;
-          
-          const nodeId = change.id;
-          const newPosition = change.position;
-          
-          // Update store immediately for responsive interaction
-          canvasStore.executeCommand({
-            type: 'UPDATE_NODE',
-            payload: {
-              nodeId,
-              updates: { position: newPosition }
-            },
-            timestamp: Date.now(),
-          });
-          canvasStore.saveToLocalStorage();
-        }
-      }
-    });
   }, [onNodesChange]);
+
+  // Optimized edge change handler
+  const handleEdgesChange = useCallback((changes: any[]) => {
+    onEdgesChange(changes);
+  }, [onEdgesChange]);
+
+  // Node update function using only React Flow's state
+  const updateNodeData = useCallback((nodeId: string, updates: any) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === nodeId ? { ...node, data: { ...node.data, ...updates } } : node
+      )
+    );
+  }, [setNodes]);
+
+  // Expose updateNodeData to child nodes via context or ref
+  useEffect(() => {
+    (window as any).__updateNodeData = updateNodeData;
+    return () => {
+      delete (window as any).__updateNodeData;
+    };
+  }, [updateNodeData]);
+
+  // Resize event handlers removed - React Flow manages this natively
 
   // Handle edge connections - show modal to define connection type
   const onConnect = useCallback((params: Connection) => {
     if (!params.source || !params.target) return;
     
     // Find source and target nodes
-    const sourceNode = nodesRef.current.find(n => n.id === params.source);
-    const targetNode = nodesRef.current.find(n => n.id === params.target);
+    const sourceNode = nodes.find(n => n.id === params.source);
+    const targetNode = nodes.find(n => n.id === params.target);
     
     if (!sourceNode || !targetNode) return;
     
@@ -192,7 +128,7 @@ const Canvas: React.FC<CanvasProps> = ({
       params,
     });
     setShowConnectionModal(true);
-  }, []);
+  }, [nodes]);
 
   // Create connection with specified type
   const handleConnectionConfirm = useCallback((connectionType: ConnectionType, customLabel?: string) => {
@@ -225,14 +161,14 @@ const Canvas: React.FC<CanvasProps> = ({
     setEdges((eds) => addEdge(newEdge, eds));
 
     // Persist to canvasStore
-    canvasStore.executeCommand({
-      type: 'ADD_EDGE',
-      payload: { edge: newEdge },
-      timestamp: Date.now(),
-    });
+    // canvasStore.executeCommand({
+    //   type: 'ADD_EDGE',
+    //   payload: { edge: newEdge },
+    //   timestamp: Date.now(),
+    // });
 
     // Save to localStorage
-    canvasStore.saveToLocalStorage();
+    // canvasStore.saveToLocalStorage();
     
     // Close modal and clear pending connection
     setShowConnectionModal(false);
@@ -245,72 +181,59 @@ const Canvas: React.FC<CanvasProps> = ({
     setPendingConnection(null);
   }, []);
 
-  // Handle edge deletions
-  const handleEdgesChange = useCallback((changes: any[]) => {
-    // Apply changes to React Flow state first
-    onEdgesChange(changes);
-    
-    // Check for deletions and persist them to canvasStore
-    changes.forEach((change) => {
-      if (change.type === 'remove') {
-        canvasStore.executeCommand({
-          type: 'DELETE_EDGE',
-          payload: { edgeId: change.id },
-          timestamp: Date.now(),
-        });
-        canvasStore.saveToLocalStorage();
-      }
-    });
-  }, [onEdgesChange]);
-
   // Sync with canvas store
   useEffect(() => {
     const updateFromStore = () => {
       // Don't update React Flow state while user is actively dragging
-      if (isDraggingRef.current) {
-        return;
-      }
+      // This state is no longer needed as React Flow manages dragging
+      // if (isDraggingRef.current) {
+      //   return;
+      // }
       
-      const state = canvasStore.getState();
+      // const state = canvasStore.getState();
       
-      // Only update nodes if there's a significant change to avoid overriding position changes
-      // during dragging or interactions
-      const currentNodeIds = nodesRef.current.map(n => n.id).sort();
-      const storeNodeIds = state.nodes.map(n => n.id).sort();
-      const nodesChanged = currentNodeIds.length !== storeNodeIds.length || 
-        currentNodeIds.some((id, index) => id !== storeNodeIds[index]);
+      // // Only update nodes if there's a significant change to avoid overriding position changes
+      // // during dragging or interactions
+      // const currentNodeIds = nodesRef.current.map(n => n.id).sort();
+      // const storeNodeIds = state.nodes.map(n => n.id).sort();
+      // const nodesChanged = currentNodeIds.length !== storeNodeIds.length || 
+      //   currentNodeIds.some((id, index) => id !== storeNodeIds[index]);
       
-      if (nodesChanged || nodesRef.current.length === 0) {
-        setNodes(state.nodes);
-      }
+      // if (nodesChanged || nodesRef.current.length === 0) {
+      //   setNodes(state.nodes);
+      // }
       
-      setEdges(state.edges);
+      // setEdges(state.edges);
       
-      // Update selected nodes
-      const selected = state.nodes.filter(node => 
-        canvasStore.isNodeSelected(node.id)
-      );
-      setSelectedNodes(selected);
+      // // Update selected nodes
+      // const selected = state.nodes.filter(node => 
+      //   canvasStore.isNodeSelected(node.id)
+      // );
+      // setSelectedNodes(selected);
       
-      if (selected.length === 1) {
-        setSelectedNode(selected[0]);
-      } else {
-        setSelectedNode(null);
-      }
+      // if (selected.length === 1) {
+      //   setSelectedNode(selected[0]);
+      // } else {
+      //   setSelectedNode(null);
+      // }
     };
 
     // Load from localStorage on mount
-    canvasStore.loadFromLocalStorage();
+    // canvasStore.loadFromLocalStorage();
     updateFromStore();
 
-    const unsubscribe = canvasStore.subscribe(updateFromStore);
-    return () => {
-      unsubscribe();
-    };
+    // const unsubscribe = canvasStore.subscribe(updateFromStore);
+    // return () => {
+    //   unsubscribe();
+    // };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // setNodes and setEdges are stable functions from React Flow hooks
 
-  const generateId = () => canvasStore.generateId();
+  const generateId = () => {
+    // This function is no longer needed as React Flow generates IDs
+    // return canvasStore.generateId(); 
+    return 'node-' + Math.random().toString(36).substring(7);
+  };
 
   const createNode = useCallback((type: NodeType, position?: { x: number; y: number }) => {
     const id = generateId();
@@ -334,7 +257,7 @@ const Canvas: React.FC<CanvasProps> = ({
           id,
           type,
           position: nodePosition,
-          data: { label: 'new-file.txt', content: '// Add your file content here...' },
+          data: { label: 'new-file.txt', content: '// Add your file content here...', fileType: 'txt' },
         };
         break;
       case 'shape':
@@ -376,65 +299,42 @@ const Canvas: React.FC<CanvasProps> = ({
         return;
     }
 
-    canvasStore.executeCommand({
-      type: 'ADD_NODE',
-      payload: { node: nodeData },
-      timestamp: Date.now(),
-    });
+    // Add node to React Flow state
+    setNodes((nodes) => [...nodes, nodeData]);
 
     if (onCreateNode) onCreateNode(type, nodePosition);
-  }, [onCreateNode]);
+  }, [onCreateNode, setNodes]);
 
   const deleteNode = useCallback((id: string) => {
-    const node = canvasStore.getNodeById(id);
-    if (!node) return;
-
-    const relatedEdges = canvasStore.getState().edges.filter(
-      edge => edge.source === id || edge.target === id
-    );
-
-    canvasStore.executeCommand({
-      type: 'DELETE_NODE',
-      payload: { 
-        nodeId: id, 
-        node,
-        edges: relatedEdges 
-      },
-      timestamp: Date.now(),
-    });
+    // Remove node and related edges from React Flow state
+    setNodes((nodes) => nodes.filter(node => node.id !== id));
+    setEdges((edges) => edges.filter(edge => edge.source !== id && edge.target !== id));
 
     if (onDeleteNode) onDeleteNode(id);
-  }, [onDeleteNode]);
+  }, [onDeleteNode, setNodes, setEdges]);
 
   const deleteSelectedNodes = useCallback(() => {
     if (selectedNodes.length > 0) {
       selectedNodes.forEach(node => {
         deleteNode(node.id);
       });
-      canvasStore.clearSelection();
+      // canvasStore.clearSelection();
       setShowMultiSelectOverlay(false);
     }
   }, [selectedNodes, deleteNode]);
 
   const clearCanvas = useCallback(() => {
-    const currentState = canvasStore.getState();
-    canvasStore.executeCommand({
-      type: 'CLEAR_CANVAS',
-      payload: {
-        previousNodes: currentState.nodes,
-        previousEdges: currentState.edges,
-        previousGroups: currentState.groups,
-      },
-      timestamp: Date.now(),
-    });
+    // Clear all nodes and edges from React Flow state
+    setNodes([]);
+    setEdges([]);
 
     if (onClearCanvas) onClearCanvas();
-  }, [onClearCanvas]);
+  }, [onClearCanvas, setNodes, setEdges]);
 
   const createGroup = useCallback((name: string, color: string) => {
     if (selectedNodes.length > 0) {
-      canvasStore.createGroup(name, selectedNodes.map(n => n.id), color);
-      canvasStore.clearSelection();
+      // canvasStore.createGroup(name, selectedNodes.map(n => n.id), color);
+      // canvasStore.clearSelection();
       setShowMultiSelectOverlay(false);
     }
   }, [selectedNodes]);
@@ -444,10 +344,10 @@ const Canvas: React.FC<CanvasProps> = ({
     createNode,
     deleteNode,
     clearCanvas,
-    undo: () => canvasStore.undo(),
-    redo: () => canvasStore.redo(),
-    canUndo: () => canvasStore.canUndo(),
-    canRedo: () => canvasStore.canRedo(),
+    undo: () => {}, // canvasStore.undo(),
+    redo: () => {}, // canvasStore.redo(),
+    canUndo: () => false, // canvasStore.canUndo(),
+    canRedo: () => false, // canvasStore.canRedo(),
   }), [createNode, deleteNode, clearCanvas]);
 
   // Expose actions to global scope for CommandPalette access
@@ -456,10 +356,10 @@ const Canvas: React.FC<CanvasProps> = ({
     
     // Cleanup function to clear any pending drag timeouts
     return () => {
-      if (dragTimeoutRef.current) {
-        clearTimeout(dragTimeoutRef.current);
-        dragTimeoutRef.current = null;
-      }
+      // if (dragTimeoutRef.current) {
+      //   clearTimeout(dragTimeoutRef.current);
+      //   dragTimeoutRef.current = null;
+      // }
     };
   }, [canvasActions]);
 
@@ -513,14 +413,14 @@ const Canvas: React.FC<CanvasProps> = ({
       // Undo with Ctrl+Z
       if (event.key === 'z' && (event.ctrlKey || event.metaKey) && !event.shiftKey) {
         event.preventDefault();
-        canvasStore.undo();
+        // canvasStore.undo();
         return;
       }
 
       // Redo with Ctrl+Shift+Z or Ctrl+Y
       if (((event.key === 'z' && event.shiftKey) || event.key === 'y') && (event.ctrlKey || event.metaKey)) {
         event.preventDefault();
-        canvasStore.redo();
+        // canvasStore.redo();
         return;
       }
 
@@ -559,14 +459,14 @@ const Canvas: React.FC<CanvasProps> = ({
     
     if (isCtrlOrCmd) {
       // Multi-select mode
-      if (canvasStore.isNodeSelected(node.id)) {
-        canvasStore.deselectNode(node.id);
-      } else {
-        canvasStore.selectNode(node.id, true);
-      }
+      // if (canvasStore.isNodeSelected(node.id)) {
+      //   canvasStore.deselectNode(node.id);
+      // } else {
+      //   canvasStore.selectNode(node.id, true);
+      // }
     } else {
       // Single select mode
-      canvasStore.selectNode(node.id, false);
+      // canvasStore.selectNode(node.id, false);
       
       if (onNodeSelect) {
         onNodeSelect(node);
@@ -579,7 +479,7 @@ const Canvas: React.FC<CanvasProps> = ({
 
   const onSelectionChange = useCallback((params: OnSelectionChangeParams) => {
     const selectedNodeIds = params.nodes.map(node => node.id);
-    canvasStore.selectMultipleNodes(selectedNodeIds);
+    // canvasStore.selectMultipleNodes(selectedNodeIds);
     
     if (selectedNodeIds.length > 1) {
       setShowMultiSelectOverlay(false); // Will be shown via keyboard shortcut
@@ -590,7 +490,7 @@ const Canvas: React.FC<CanvasProps> = ({
     setContextMenu(null);
     
     if (!event.ctrlKey && !event.metaKey) {
-      canvasStore.clearSelection();
+      // canvasStore.clearSelection();
       
       if (onNodeDeselect) {
         onNodeDeselect();
@@ -648,8 +548,9 @@ const Canvas: React.FC<CanvasProps> = ({
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
-        nodesDraggable={!isAnyNodeResizing}
         fitView
+        snapToGrid={true}
+        snapGrid={[10, 10]}
         attributionPosition="bottom-left"
         className="bg-canvas-bg"
         connectionLineStyle={{ stroke: '#8b5cf6', strokeWidth: 2 }}
@@ -802,6 +703,6 @@ const Canvas: React.FC<CanvasProps> = ({
       />
     </div>
   );
-};
+});
 
 export default Canvas; 

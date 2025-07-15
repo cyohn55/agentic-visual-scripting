@@ -48,6 +48,19 @@ function App() {
     };
   }, []);
 
+  // Helper function to check if user is typing in an input field
+  const isTypingInInput = (target: EventTarget | null): boolean => {
+    if (!target) return false;
+    const element = target as HTMLElement;
+    const tagName = element.tagName?.toLowerCase();
+    return (
+      tagName === 'input' ||
+      tagName === 'textarea' ||
+      element.contentEditable === 'true' ||
+      element.classList.contains('monaco-editor') // Monaco editor
+    );
+  };
+
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -69,8 +82,8 @@ function App() {
         setShowKeyboardHelp(!showKeyboardHelp);
       }
 
-      // Execution panel
-      if (e.key === 'e' || e.key === 'E') {
+      // Execution panel (only if not typing in input)
+      if ((e.key === 'e' || e.key === 'E') && !isTypingInInput(e.target)) {
         e.preventDefault();
         setShowExecutionPanel(!showExecutionPanel);
       }
