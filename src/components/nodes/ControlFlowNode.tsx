@@ -18,6 +18,7 @@ const ControlFlowNode: React.FC<ControlFlowNodeProps> = ({ data, selected, id })
   const [isEditingCondition, setIsEditingCondition] = useState(false);
   const [label, setLabel] = useState(data.label);
   const [condition, setCondition] = useState(data.condition || '');
+  const [isResizing, setIsResizing] = useState(false);
   
   const labelRef = useRef<HTMLInputElement>(null);
   const conditionRef = useRef<HTMLInputElement>(null);
@@ -160,7 +161,7 @@ const ControlFlowNode: React.FC<ControlFlowNodeProps> = ({ data, selected, id })
       <div
         className={`border-2 shadow-lg relative flex items-center justify-center ${
           selected ? 'ring-2 ring-blue-500' : ''
-        }`}
+        } ${isResizing ? 'cursor-nw-resize' : 'cursor-default'}`}
         style={nodeStyle}
       >
         {/* Input Handle - not for start nodes */}
@@ -230,6 +231,39 @@ const ControlFlowNode: React.FC<ControlFlowNodeProps> = ({ data, selected, id })
               />
             )}
           </>
+        )}
+
+        {/* Resize Handle */}
+        {selected && (
+          <div
+            className="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 cursor-nw-resize opacity-70 hover:opacity-100"
+            style={{ transform: 'rotate(45deg)', transformOrigin: 'center' }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              setIsResizing(true);
+              
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startWidth = width;
+              const startHeight = height;
+
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const newWidth = Math.max(100, startWidth + (moveEvent.clientX - startX));
+                const newHeight = Math.max(50, startHeight + (moveEvent.clientY - startY));
+                
+                updateNodeData({ width: newWidth, height: newHeight });
+              };
+
+              const handleMouseUp = () => {
+                setIsResizing(false);
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+          />
         )}
       </div>
 

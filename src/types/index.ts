@@ -12,6 +12,8 @@ export interface CanvasNode {
     label: string;
     content?: string;
     color?: string;
+    width?: number;
+    height?: number;
     [key: string]: any;
   };
 }

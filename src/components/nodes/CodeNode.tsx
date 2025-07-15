@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Handle, Position, NodeProps } from 'reactflow';
+import React, { useState } from 'react';
+import { Handle, Position, NodeProps, useReactFlow } from 'reactflow';
 import CodeEditorModal from '../CodeEditorModal';
 
 interface CodeNodeData {
@@ -9,6 +9,8 @@ interface CodeNodeData {
   isRunnable?: boolean;
   lastRun?: number;
   output?: string;
+  width?: number;
+  height?: number;
 }
 
 const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
@@ -18,6 +20,25 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
 }) => {
   const [showEditor, setShowEditor] = useState(false);
   const [isExecuting, setIsExecuting] = useState(false);
+  const [isResizing, setIsResizing] = useState(false);
+  const { setNodes } = useReactFlow();
+
+  const width = data.width || 300;
+  const height = data.height || 200;
+
+  const updateNodeData = (updates: Partial<CodeNodeData>) => {
+    setNodes((nodes) =>
+      nodes.map((node) =>
+        node.id === id ? { ...node, data: { ...node.data, ...updates } } : node
+      )
+    );
+    
+    // Also dispatch custom event for other components
+    const event = new CustomEvent('updateNodeData', {
+      detail: { nodeId: id, data: updates }
+    });
+    window.dispatchEvent(event);
+  };
 
   const supportedLanguages = [
     { value: 'javascript', label: 'JavaScript', icon: '🟨', runnable: true },
@@ -53,6 +74,7 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
       if (data.language === 'javascript') {
         // Simple JavaScript evaluation (unsafe in production)
         try {
+          // eslint-disable-next-line no-eval
           const result = eval(data.code);
           output = String(result);
         } catch (error) {
@@ -92,9 +114,17 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
 
   return (
     <>
-      <div className={`bg-gray-900 border-2 rounded-lg min-w-[300px] ${
-        selected ? 'border-blue-500' : 'border-gray-600'
-      } shadow-lg`}>
+      <div 
+        className={`bg-gray-900 border-2 rounded-lg relative ${
+          selected ? 'border-blue-500' : 'border-gray-600'
+        } shadow-lg ${isResizing ? 'cursor-nw-resize' : 'cursor-default'}`}
+        style={{
+          width: width,
+          height: height,
+          minWidth: 250,
+          minHeight: 150,
+        }}
+      >
         {/* Header */}
         <div className="bg-gray-800 px-4 py-2 rounded-t-lg border-b border-gray-600">
           <div className="flex items-center justify-between">
@@ -167,6 +197,39 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
           position={Position.Right}
           className="w-3 h-3 bg-blue-500"
         />
+
+        {/* Resize Handle */}
+        {selected && (
+          <div
+            className="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 cursor-nw-resize opacity-70 hover:opacity-100"
+            style={{ transform: 'rotate(45deg)', transformOrigin: 'center' }}
+            onMouseDown={(e) => {
+              e.stopPropagation();
+              setIsResizing(true);
+              
+              const startX = e.clientX;
+              const startY = e.clientY;
+              const startWidth = width;
+              const startHeight = height;
+
+              const handleMouseMove = (moveEvent: MouseEvent) => {
+                const newWidth = Math.max(250, startWidth + (moveEvent.clientX - startX));
+                const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
+                
+                updateNodeData({ width: newWidth, height: newHeight });
+              };
+
+              const handleMouseUp = () => {
+                setIsResizing(false);
+                document.removeEventListener('mousemove', handleMouseMove);
+                document.removeEventListener('mouseup', handleMouseUp);
+              };
+
+              document.addEventListener('mousemove', handleMouseMove);
+              document.addEventListener('mouseup', handleMouseUp);
+            }}
+          />
+        )}
       </div>
 
       {/* Monaco Editor Modal */}

@@ -91,10 +91,6 @@ const Canvas: React.FC<CanvasProps> = ({
       );
       
       // Update canvas store
-      const updatedNodes = nodes.map((node) =>
-        node.id === nodeId ? { ...node, data: { ...node.data, ...data } } : node
-      );
-      
       canvasStore.executeCommand({
         type: 'UPDATE_NODE',
         payload: { nodeId, data },
@@ -108,6 +104,7 @@ const Canvas: React.FC<CanvasProps> = ({
     return () => {
       window.removeEventListener('updateNodeData', handleUpdateNodeData);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setNodes]);
 
   // Use external state if provided, otherwise use internal state

@@ -27,7 +27,7 @@ const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
     setIsModified(false);
   }, [initialCode]);
 
-  const handleEditorDidMount = (editor: any) => {
+  const handleEditorDidMount = (editor: any, monaco: any) => {
     editorRef.current = editor;
     
     // Set editor theme and options
@@ -40,10 +40,16 @@ const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
       automaticLayout: true,
     });
 
-    // Add keyboard shortcuts
-    editor.addCommand(editor.KeyMod.CtrlCmd | editor.KeyCode.KeyS, () => {
-      handleSave();
-    });
+    // Add keyboard shortcuts using monaco instance
+    if (monaco && monaco.KeyMod && monaco.KeyCode) {
+      try {
+        editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
+          handleSave();
+        });
+      } catch (error) {
+        console.warn('Could not add Monaco keyboard shortcuts:', error);
+      }
+    }
   };
 
   const handleCodeChange = (value: string | undefined) => {

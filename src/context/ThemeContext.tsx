@@ -124,7 +124,7 @@ export const ThemeProvider: React.FC<ThemeProviderProps> = ({ children }) => {
       ...prev,
       colors: newColors,
     }));
-  }, [config.theme]);
+  }, [config.theme, getCurrentTheme]);
 
   // Listen for system theme changes when in auto mode
   useEffect(() => {
