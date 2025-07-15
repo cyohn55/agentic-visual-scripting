@@ -27,17 +27,20 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
   const height = data.height || 200;
 
   const updateNodeData = (updates: Partial<CodeNodeData>) => {
+    // Update React Flow nodes immediately for responsive UI
     setNodes((nodes) =>
       nodes.map((node) =>
         node.id === id ? { ...node, data: { ...node.data, ...updates } } : node
       )
     );
     
-    // Also dispatch custom event for other components
-    const event = new CustomEvent('updateNodeData', {
-      detail: { nodeId: id, data: updates }
-    });
-    window.dispatchEvent(event);
+    // Only dispatch custom events for non-resize updates to reduce overhead
+    if (!updates.width && !updates.height) {
+      const event = new CustomEvent('updateNodeData', {
+        detail: { nodeId: id, data: updates }
+      });
+      window.dispatchEvent(event);
+    }
   };
 
   const supportedLanguages = [
@@ -201,11 +204,15 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
         {/* Resize Handle */}
         {selected && (
           <div
-            className="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 cursor-nw-resize opacity-70 hover:opacity-100"
+            className="absolute bottom-0 right-0 w-3 h-3 bg-gray-400 cursor-nw-resize opacity-70 hover:opacity-100 nodrag z-10"
             style={{ transform: 'rotate(45deg)', transformOrigin: 'center' }}
             onMouseDown={(e) => {
               e.stopPropagation();
+              e.preventDefault();
               setIsResizing(true);
+              
+              // Dispatch resize start event
+              window.dispatchEvent(new CustomEvent('nodeResizeStart'));
               
               const startX = e.clientX;
               const startY = e.clientY;
@@ -216,11 +223,16 @@ const CodeNode: React.FC<NodeProps<CodeNodeData>> = ({
                 const newWidth = Math.max(250, startWidth + (moveEvent.clientX - startX));
                 const newHeight = Math.max(150, startHeight + (moveEvent.clientY - startY));
                 
-                updateNodeData({ width: newWidth, height: newHeight });
+                // Use requestAnimationFrame for smooth updates
+                requestAnimationFrame(() => {
+                  updateNodeData({ width: newWidth, height: newHeight });
+                });
               };
 
               const handleMouseUp = () => {
                 setIsResizing(false);
+                // Dispatch resize end event
+                window.dispatchEvent(new CustomEvent('nodeResizeEnd'));
                 document.removeEventListener('mousemove', handleMouseMove);
                 document.removeEventListener('mouseup', handleMouseUp);
               };

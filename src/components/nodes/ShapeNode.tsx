@@ -295,11 +295,15 @@ const ShapeNode: React.FC<ShapeNodeProps> = ({ data, selected, id }) => {
       {/* Resize handle */}
       {selected && !isTriangle && (
         <div
-          className="absolute bottom-0 right-0 w-3 h-3 bg-gray-600 cursor-nw-resize"
+          className="absolute bottom-0 right-0 w-3 h-3 bg-gray-600 cursor-nw-resize nodrag z-10"
           style={{ transform: 'rotate(45deg)', transformOrigin: 'center' }}
           onMouseDown={(e) => {
             e.stopPropagation();
+            e.preventDefault();
             setIsResizing(true);
+            
+            // Dispatch resize start event
+            window.dispatchEvent(new CustomEvent('nodeResizeStart'));
             
             const startX = e.clientX;
             const startY = e.clientY;
@@ -310,11 +314,16 @@ const ShapeNode: React.FC<ShapeNodeProps> = ({ data, selected, id }) => {
               const newWidth = Math.max(80, startWidth + (moveEvent.clientX - startX));
               const newHeight = Math.max(60, startHeight + (moveEvent.clientY - startY));
               
-              updateNodeData({ width: newWidth, height: newHeight });
+              // Use requestAnimationFrame for smooth updates
+              requestAnimationFrame(() => {
+                updateNodeData({ width: newWidth, height: newHeight });
+              });
             };
 
             const handleMouseUp = () => {
               setIsResizing(false);
+              // Dispatch resize end event
+              window.dispatchEvent(new CustomEvent('nodeResizeEnd'));
               document.removeEventListener('mousemove', handleMouseMove);
               document.removeEventListener('mouseup', handleMouseUp);
             };

@@ -64,6 +64,7 @@ const Canvas: React.FC<CanvasProps> = ({
   const [selectedNodes, setSelectedNodes] = useState<Node[]>([]);
   const [showPropertiesPanel, setShowPropertiesPanel] = useState(false);
   const [showMultiSelectOverlay, setShowMultiSelectOverlay] = useState(false);
+  const [isAnyNodeResizing, setIsAnyNodeResizing] = useState(false);
   const [showGroupingPanel, setShowGroupingPanel] = useState(false);
   const [showConnectionModal, setShowConnectionModal] = useState(false);
   const [pendingConnection, setPendingConnection] = useState<{
@@ -90,14 +91,17 @@ const Canvas: React.FC<CanvasProps> = ({
         )
       );
       
-      // Update canvas store
-      canvasStore.executeCommand({
-        type: 'UPDATE_NODE',
-        payload: { nodeId, data },
-        timestamp: Date.now(),
-      });
-      
-      canvasStore.saveToLocalStorage();
+      // Skip store operations for resize updates to maintain performance
+      // Resize data is handled by React Flow's built-in state management
+      if (!data.width && !data.height) {
+        canvasStore.executeCommand({
+          type: 'UPDATE_NODE',
+          payload: { nodeId, data },
+          timestamp: Date.now(),
+        });
+        
+        canvasStore.saveToLocalStorage();
+      }
     };
 
     window.addEventListener('updateNodeData', handleUpdateNodeData);
@@ -106,6 +110,20 @@ const Canvas: React.FC<CanvasProps> = ({
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [setNodes]);
+
+  // Listen for node resize events
+  useEffect(() => {
+    const handleResizeStart = () => setIsAnyNodeResizing(true);
+    const handleResizeEnd = () => setIsAnyNodeResizing(false);
+
+    window.addEventListener('nodeResizeStart', handleResizeStart);
+    window.addEventListener('nodeResizeEnd', handleResizeEnd);
+
+    return () => {
+      window.removeEventListener('nodeResizeStart', handleResizeStart);
+      window.removeEventListener('nodeResizeEnd', handleResizeEnd);
+    };
+  }, []);
 
   // Use external state if provided, otherwise use internal state
   const currentSelectedNode = externalSelectedNode !== undefined ? externalSelectedNode : selectedNode;
@@ -142,18 +160,16 @@ const Canvas: React.FC<CanvasProps> = ({
           const nodeId = change.id;
           const newPosition = change.position;
           
-          // Use timeout to batch position updates and avoid conflicts
-          dragTimeoutRef.current = setTimeout(() => {
-            canvasStore.executeCommand({
-              type: 'UPDATE_NODE',
-              payload: {
-                nodeId,
-                updates: { position: newPosition }
-              },
-              timestamp: Date.now(),
-            });
-            canvasStore.saveToLocalStorage();
-          }, 200); // Longer delay to ensure smooth dragging
+          // Update store immediately for responsive interaction
+          canvasStore.executeCommand({
+            type: 'UPDATE_NODE',
+            payload: {
+              nodeId,
+              updates: { position: newPosition }
+            },
+            timestamp: Date.now(),
+          });
+          canvasStore.saveToLocalStorage();
         }
       }
     });
@@ -632,6 +648,7 @@ const Canvas: React.FC<CanvasProps> = ({
         onPaneClick={onPaneClick}
         onPaneContextMenu={onPaneContextMenu}
         nodeTypes={nodeTypes}
+        nodesDraggable={!isAnyNodeResizing}
         fitView
         attributionPosition="bottom-left"
         className="bg-canvas-bg"
@@ -643,6 +660,14 @@ const Canvas: React.FC<CanvasProps> = ({
         multiSelectionKeyCode={['Control', 'Meta']}
         deleteKeyCode={['Delete', 'Backspace']}
         selectionOnDrag={true}
+        maxZoom={3}
+        minZoom={0.1}
+        elevateNodesOnSelect={false}
+        disableKeyboardA11y={true}
+        nodesFocusable={false}
+        edgesFocusable={false}
+        elementsSelectable={true}
+        selectNodesOnDrag={false}
       >
         <Background 
           color="#2a2a2a" 
